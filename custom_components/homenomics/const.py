@@ -8,7 +8,6 @@ CONF_LOCAL_CURRENCY = "local_currency"
 CONF_UPDATE_FREQUENCY = "update_frequency"
 
 SENSOR_PREFIX = "HomeNomics "
-ATTR_VOLUME = "volume"
 ATTR_MARKET_CAP = "market_cap"
 ATTR_SYMBOL = "symbol"
 ATTR_LOGO_URL = "logo_url"
