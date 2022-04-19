@@ -1,0 +1,11 @@
+{
+  "domain": "homenomics",
+  "name": "HomeNomics",
+  "version": "0.0.1",
+  "documentation": "https://github.com/McCookieM/homenomics",
+  "dependencies": [],
+  "codeowners": [
+    "@McCookieM"
+  ],
+  "requirements": []
+}
