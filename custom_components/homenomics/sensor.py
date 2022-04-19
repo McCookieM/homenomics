@@ -29,6 +29,7 @@ from .const import (
     CONF_UPDATE_FREQUENCY,
     ATTR_MARKET_CAP,
     ATTR_SYMBOL,
+    ATTR_CURRENCY,
     ATTR_LOGO_URL,
     ATTR_RANK,
     ATTR_HIGH,
@@ -107,6 +108,7 @@ class HomeNomicsSensor(Entity):
         self._last_update = None
         self._market_cap = None
         self._symbol = None
+        self._currency = None
         self._logo_url = None
         self._rank = None
         self._high = None
@@ -151,6 +153,7 @@ class HomeNomicsSensor(Entity):
             ATTR_LAST_UPDATE: self._last_update,
             ATTR_MARKET_CAP: self._market_cap,
             ATTR_SYMBOL: self._symbol,
+            ATTR_CURRENCY: self._currency,
             ATTR_LOGO_URL: self._logo_url,
             ATTR_RANK: self._rank,
             ATTR_HIGH: self._high,
@@ -177,6 +180,7 @@ class HomeNomicsSensor(Entity):
                 # set the attributes of the sensor
                 self._market_cap = coinData["market_cap"]
                 self._symbol = coinData["symbol"]
+                self._currency = coinData["currency"]
                 self._logo_url = coinData["logo_url"]
                 self._rank = coinData["rank"]
                 self._high = coinData["high"]
@@ -191,7 +195,7 @@ class HomeNomicsSensor(Entity):
                 self._30_day_pct = coinData["30_day_pct"]
                 
                 # Set state and availability
-                self._state = float(coinData["current_price"])
+                self._state = coinData["current_price"]
                 self._available = True
             else:
                 raise ValueError()
@@ -200,6 +204,7 @@ class HomeNomicsSensor(Entity):
             self._last_update = datetime.today().strftime("%d-%m-%Y %H:%M")
             self._market_cap = None
             self._symbol = None
+            self._currency = None
             self._logo_url = None
             self._rank = None
             self._high = None
@@ -236,10 +241,8 @@ class NomicsData:
         return self._local_currency
     
     def GetData(self, crypto):
-        if self._nomicsdata:
-            for data in self._nomicsdata:
-                if data["id"] == crypto:
-                    return data
+        if crypto in self._nomicsdata:
+            return self._nomicsdata[crypto]
 
     def _update(self):
         try:
@@ -255,17 +258,18 @@ class NomicsData:
             r = requests.get(url=url)
             
             # extracting response json            
-            objData = []
+            objData = {}
             for obj in r.json():
                 # Tidy up and add required data
                 entry = {}
                 entry["id"] = obj["id"]
-                entry["current_price"] = obj["price"] if "price" in obj else None
+                entry["currency"] = obj["name"]
+                entry["current_price"] = float(obj["price"]) if "price" in obj else None
                 entry["symbol"] = obj["symbol"] if "symbol" in obj else None
                 entry["logo_url"] = obj["logo_url"] if "logo_url" in obj else None
                 entry["market_cap"] = obj["market_cap"] if "market_cap" in obj else None
                 if "high" in obj:
-                    entry["high"] = obj["high"]
+                    entry["high"] = float(obj["high"])
                     high_dt = datetime.strptime(obj["high_timestamp"],"%Y-%m-%dT%H:%M:%SZ")
                     entry["high_timestamp"] = high_dt.strftime("%d-%m-%Y %H:%M")
                 else:
@@ -273,31 +277,31 @@ class NomicsData:
                     entry["high_timestamp"] = None
                 entry["rank"] = obj["rank"] if "rank" in obj else None
                 if "1h" in obj:
-                    entry["1_hr"] = obj["1h"]["price_change"]
-                    entry["1_hr_pct"] = obj["1h"]["price_change_pct"]
+                    entry["1_hr"] = float(obj["1h"]["price_change"])
+                    entry["1_hr_pct"] = round(float(obj["1h"]["price_change_pct"]) * 100, 4)
                 else:
                     entry["1_hr"] = None
                     entry["1_hr_pct"] = None
                 if "1d" in obj:
-                    entry["24_hr"] = obj["1d"]["price_change"]
-                    entry["24_hr_pct"] = obj["1d"]["price_change_pct"]
+                    entry["24_hr"] = float(obj["1d"]["price_change"])
+                    entry["24_hr_pct"] = round(float(obj["1d"]["price_change_pct"]) * 100, 4)
                 else:
                     entry["24_hr"] = None
                     entry["24_hr_pct"] = None
                 if "7d" in obj:
-                    entry["7_day"] = obj["7d"]["price_change"]
-                    entry["7_day_pct"] = obj["7d"]["price_change_pct"]
+                    entry["7_day"] = float(obj["7d"]["price_change"])
+                    entry["7_day_pct"] = round(float(obj["7d"]["price_change_pct"]) * 100, 4)
                 else:
                     entry["7_day"] = None
                     entry["7_day_pct"] = None
                 if "30d" in obj:
-                    entry["30_day"] = obj["30d"]["price_change"]
-                    entry["30_day_pct"] = obj["30d"]["price_change_pct"]
+                    entry["30_day"] = float(obj["30d"]["price_change"])
+                    entry["30_day_pct"] = round(float(obj["30d"]["price_change_pct"]) * 100, 4)
                 else:
                     entry["30_day"] = None
                     entry["30_day_pct"] = None
                 
-                objData.append(entry)
+                objData[obj["id"]] = entry
             
             self._nomicsdata = objData
             self._last_update = datetime.now().strftime("%d-%m-%Y %H:%M")
