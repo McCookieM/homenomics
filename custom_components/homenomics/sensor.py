@@ -27,7 +27,6 @@ from .const import (
     CONF_CRYPTOCURRENCIES,
     CONF_LOCAL_CURRENCY,
     CONF_UPDATE_FREQUENCY,
-    ATTR_VOLUME,
     ATTR_MARKET_CAP,
     ATTR_SYMBOL,
     ATTR_LOGO_URL,
@@ -47,7 +46,7 @@ from .const import (
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_API_KEY): cv.string.
+        vol.Required(CONF_API_KEY): cv.string,
         vol.Required(CONF_CRYPTOCURRENCIES): cv.ensure_list,
         vol.Optional(CONF_LOCAL_CURRENCY, default="usd"): cv.string,
         vol.Optional(CONF_UPDATE_FREQUENCY, default=60): cv.string,
@@ -98,15 +97,14 @@ class HomeNomicsSensor(Entity):
         super().__init__()
         self.data = None
         self.hndata = hndata
-        self.crypto = crypto.lower().strip()
+        self.crypto = crypto.upper().strip()
         self.local_currency = hndata.GetLocalCurrency()
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._name = (SENSOR_PREFIX + crypto + " " + self.local_currency)
-        self._icon = "mdi:bitcoin"
+        self._name = (SENSOR_PREFIX + self.crypto + " " + self.local_currency)
+        self._icon = "mdi:circle-multiple"
         self._state = None
         self._available = True
         self._last_update = None
-        self._volume = None
         self._market_cap = None
         self._symbol = None
         self._logo_url = None
@@ -121,7 +119,7 @@ class HomeNomicsSensor(Entity):
         self._24_hr_pct = None
         self._7_day_pct = None
         self._30_day_pct = None
-        self._unit_of_measurement = self.local_currency.upper()
+        self._unit_of_measurement = self.local_currency
 
     @property
     def name(self) -> str:
@@ -151,7 +149,6 @@ class HomeNomicsSensor(Entity):
     def extra_state_attributes(self):
         return {
             ATTR_LAST_UPDATE: self._last_update,
-            ATTR_VOLUME: self._volume,
             ATTR_MARKET_CAP: self._market_cap,
             ATTR_SYMBOL: self._symbol,
             ATTR_LOGO_URL: self._logo_url,
@@ -178,15 +175,20 @@ class HomeNomicsSensor(Entity):
                 # Set the values of the sensor
                 self._last_update = lastUpdate
                 # set the attributes of the sensor
-                self._volume = coinData["volume"]
                 self._market_cap = coinData["market_cap"]
                 self._symbol = coinData["symbol"]
                 self._logo_url = coinData["logo_url"]
                 self._rank = coinData["rank"]
                 self._high = coinData["high"]
                 self._high_timestamp = coinData["high_timestamp"]
+                self._1_hr = coinData["1_hr"]
+                self._1_hr_pct = coinData["1_hr_pct"]
                 self._24_hr = coinData["24_hr"]
                 self._24_hr_pct = coinData["24_hr_pct"]
+                self._7_day = coinData["7_day"]
+                self._7_day_pct = coinData["7_day_pct"]
+                self._30_day = coinData["30_day"]
+                self._30_day_pct = coinData["30_day_pct"]
                 
                 # Set state and availability
                 self._state = float(coinData["current_price"])
@@ -196,7 +198,6 @@ class HomeNomicsSensor(Entity):
         except ValueError:
             self._state = None
             self._last_update = datetime.today().strftime("%d-%m-%Y %H:%M")
-            self._volume = None
             self._market_cap = None
             self._symbol = None
             self._logo_url = None
@@ -215,13 +216,15 @@ class HomeNomicsSensor(Entity):
             self._available = False
         except Exception as err:
             self._available = False
-            _LOGGER.exception(f"Error retrieving data from Nomics API - {err=}")
+            _LOGGER.exception(f"Error setting values using data from Nomics API - {err=}")
 
 class NomicsData:
     def __init__(self, api_key, cryptos, local_currency, throttle):
         self._api_key = api_key
-        self._cryptos = cryptos
-        self._local_currency = local_currency.lower().strip()
+        self._cryptos = []
+        for crypto in cryptos:
+            self._cryptos.append(crypto.upper().strip())
+        self._local_currency = local_currency.upper().strip()
         self._last_update = ""
         self._nomicsdata = {}
         self.update = Throttle(throttle)(self._update)
@@ -237,14 +240,14 @@ class NomicsData:
             for data in self._nomicsdata:
                 if data["id"] == crypto:
                     return data
-        
+
     def _update(self):
         try:
             url = (
                 API_ENDPOINT
                 + "currencies/ticker?key=" + self._api_key
                 + "&ids=" + ','.join(self._cryptos)
-                + "&interval=1h,1d,7d,30,365d,ytd"
+                + "&interval=1h,1d,7d,30d"
                 + "&convert=" + self._local_currency
             )
             
@@ -257,37 +260,47 @@ class NomicsData:
                 # Tidy up and add required data
                 entry = {}
                 entry["id"] = obj["id"]
-                entry["current_price"] = obj["price"]
-                entry["symbol"] = obj["symbol"]
-                entry["logo_url"] = obj["logo_url"]
-                if "circulating_supply" in obj:
-                    entry["volume"] = obj["circulating_supply"]
-                if "market_cap" in obj:
-                    entry["market_cap"] = obj["market_cap"]
+                entry["current_price"] = obj["price"] if "price" in obj else None
+                entry["symbol"] = obj["symbol"] if "symbol" in obj else None
+                entry["logo_url"] = obj["logo_url"] if "logo_url" in obj else None
+                entry["market_cap"] = obj["market_cap"] if "market_cap" in obj else None
                 if "high" in obj:
                     entry["high"] = obj["high"]
-                    high_dt = datetime.strptime(obj["high_timestamp"],"%Y-%m-%dT%H:%M:%S.%fZ")
+                    high_dt = datetime.strptime(obj["high_timestamp"],"%Y-%m-%dT%H:%M:%SZ")
                     entry["high_timestamp"] = high_dt.strftime("%d-%m-%Y %H:%M")
-                if "rank" in obj:
-                    entry["rank"] = obj["rank"]
+                else:
+                    entry["high"] = None
+                    entry["high_timestamp"] = None
+                entry["rank"] = obj["rank"] if "rank" in obj else None
                 if "1h" in obj:
                     entry["1_hr"] = obj["1h"]["price_change"]
                     entry["1_hr_pct"] = obj["1h"]["price_change_pct"]
+                else:
+                    entry["1_hr"] = None
+                    entry["1_hr_pct"] = None
                 if "1d" in obj:
                     entry["24_hr"] = obj["1d"]["price_change"]
                     entry["24_hr_pct"] = obj["1d"]["price_change_pct"]
+                else:
+                    entry["24_hr"] = None
+                    entry["24_hr_pct"] = None
                 if "7d" in obj:
                     entry["7_day"] = obj["7d"]["price_change"]
                     entry["7_day_pct"] = obj["7d"]["price_change_pct"]
+                else:
+                    entry["7_day"] = None
+                    entry["7_day_pct"] = None
                 if "30d" in obj:
                     entry["30_day"] = obj["30d"]["price_change"]
                     entry["30_day_pct"] = obj["30d"]["price_change_pct"]
+                else:
+                    entry["30_day"] = None
+                    entry["30_day_pct"] = None
                 
                 objData.append(entry)
             
-            self._nomics = objData
+            self._nomicsdata = objData
             self._last_update = datetime.now().strftime("%d-%m-%Y %H:%M")
 
         except Exception as err:
-            self._available = False
-            _LOGGER.exception(f"Error retrieving data from CoinNomics API - {err=}")
+            _LOGGER.exception(f"Error retrieving data from Nomics API - {err=}")
