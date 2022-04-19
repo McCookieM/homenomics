@@ -1,0 +1,1 @@
+""" HomeNomics custom component """
